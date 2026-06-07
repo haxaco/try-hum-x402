@@ -39,6 +39,8 @@ const CHAIN_ID = 84532;
 const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 
 const MODEL_ALIASES = {
+  local:   'local/phi3-mini',
+  phi3:    'local/phi3-mini',
   claude:  'anthropic/claude-haiku-4.5',
   gpt:     'openai/gpt-4o-mini',
   gemini:  'google/gemini-2.5-flash-lite',
