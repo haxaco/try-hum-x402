@@ -34,9 +34,14 @@ import { randomBytes } from 'node:crypto';
 const DEFAULT_HUM = 'https://moved-captain-shipments-crest.trycloudflare.com';
 const HUM_URL = (process.env.HUM_URL || DEFAULT_HUM).replace(/\/$/, '');
 
-const NETWORK_NAME = 'base-sepolia';
-const CHAIN_ID = 84532;
-const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+// All chain-specific values (chainId, USDC contract, EIP-712 domain name)
+// are derived from Hum's 402 quote — the same script works on any chain Hum
+// is configured for (base-sepolia, base mainnet, etc).
+const NETWORK_TO_CHAIN_ID = {
+  'base-sepolia': 84532,
+  'base': 8453,
+  'base-mainnet': 8453,
+};
 
 const MODEL_ALIASES = {
   local:   'local/phi3-mini',
@@ -100,14 +105,14 @@ function genNonce() {
   return '0x' + randomBytes(32).toString('hex');
 }
 
-async function signEIP3009({ from, to, value, validAfter, validBefore, nonce }) {
-  // USDC on Base / Base Sepolia is an EIP-712 v2 token. The contract's
-  // domain separator uses name='USDC', version='2'.
+async function signEIP3009({ from, to, value, validAfter, validBefore, nonce, chainId, usdcAddress, usdcName, usdcVersion }) {
+  // USDC's EIP-712 domain — values come from Hum's 402 quote so the same
+  // script works on Sepolia (name='USDC') and mainnet (name='USD Coin').
   const domain = {
-    name: 'USDC',
-    version: '2',
-    chainId: CHAIN_ID,
-    verifyingContract: USDC_ADDRESS,
+    name: usdcName,
+    version: usdcVersion,
+    chainId,
+    verifyingContract: usdcAddress,
   };
   const types = {
     TransferWithAuthorization: [
@@ -130,11 +135,11 @@ async function signEIP3009({ from, to, value, validAfter, validBefore, nonce }) 
   return await account.signTypedData({ domain, types, primaryType: 'TransferWithAuthorization', message });
 }
 
-function encodeXPayment({ signature, from, to, value, validAfter, validBefore, nonce }) {
+function encodeXPayment({ signature, from, to, value, validAfter, validBefore, nonce, network }) {
   const payload = {
     x402Version: 1,
     scheme: 'exact',
-    network: NETWORK_NAME,
+    network,
     payload: {
       signature,
       authorization: {
@@ -192,6 +197,15 @@ async function main() {
   if (p) log.kv('breakdown', `est ${p.estInputTokens}→${p.estOutputTokens} tok · base $${(p.baseCostMicroUsd/1e6).toFixed(6)} × ${p.markup}×`);
   log.blank();
 
+  // Derive everything we need to sign from the 402 quote.
+  const chainId = NETWORK_TO_CHAIN_ID[accepts.network];
+  if (!chainId) {
+    console.error(`${red('✖')} unsupported network in 402 quote: ${accepts.network}`);
+    process.exit(2);
+  }
+  const usdcName = accepts.extra?.name ?? 'USDC';
+  const usdcVersion = accepts.extra?.version ?? '2';
+
   // ── 2. sign locally with viem ─────────────────────────────────────────
   log.step(2, 'Sign EIP-3009 locally with viem — no server, no Sly account');
   const validAfter = 0;
@@ -202,11 +216,16 @@ async function main() {
     to: accepts.payTo,
     value: accepts.maxAmountRequired,
     validAfter, validBefore, nonce,
+    chainId,
+    usdcAddress: accepts.asset,
+    usdcName,
+    usdcVersion,
   });
   log.kv('from',    account.address);
   log.kv('to',      accepts.payTo);
   log.kv('value',   `${accepts.maxAmountRequired} µ`);
-  log.kv('chainId', CHAIN_ID);
+  log.kv('chainId', chainId);
+  log.kv('domain',  `${usdcName} v${usdcVersion} @ ${accepts.asset}`);
   log.kv('sig',     signature.slice(0, 20) + '…' + signature.slice(-8));
   log.kv('nonce',   nonce.slice(0, 14) + '…');
   log.blank();
@@ -219,6 +238,7 @@ async function main() {
     to: accepts.payTo,
     value: accepts.maxAmountRequired,
     validAfter, validBefore, nonce,
+    network: accepts.network,
   });
   const t0 = Date.now();
   const paidRes = await jsonFetch(`${HUM_URL}/api/x402-inference`, {
