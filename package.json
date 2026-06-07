@@ -1,0 +1,26 @@
+{
+  "name": "try-hum-x402",
+  "version": "0.1.0",
+  "description": "One-shot CLI that calls Hum, a phone-side LLM marketplace, via real HTTP 402 + EIP-3009. Permissionless — no account needed.",
+  "type": "module",
+  "bin": {
+    "try-hum-x402": "./try-hum-x402.mjs"
+  },
+  "main": "./try-hum-x402.mjs",
+  "scripts": {
+    "start": "node try-hum-x402.mjs"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "keywords": ["x402", "llm", "sly", "openrouter", "eip-3009", "agent", "marketplace"],
+  "author": "haxaco",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/haxaco/try-hum-x402.git"
+  }
+}
